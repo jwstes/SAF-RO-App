@@ -295,6 +295,54 @@ app.get('/getChatMessages', (req, res) => {
 });
 
 
+app.get('/getUsersByPlatoon', (req, res) => {
+  const { platoon } = req.query;
+  if (!platoon) {
+    return res.status(400).json({ error: "Platoon query parameter is required." });
+  }
+  
+  const platoonNumber = parseInt(platoon, 10);
+  if (isNaN(platoonNumber)) {
+    return res.status(400).json({ error: "Invalid platoon number provided." });
+  }
+  
+  const sql = `SELECT userid, username, firstname, lastname, companyName, platoon, section, bed, identifier, role 
+               FROM soldiers 
+               WHERE platoon = ?`;
+  db.query(sql, [platoonNumber], (err, results) => {
+    if (err) {
+      console.error("Error fetching users by platoon:", err);
+      return res.status(500).json({ error: "Server error" });
+    }
+    res.json(results);
+  });
+});
+
+
+app.get('/getUsersBySection', (req, res) => {
+  const { section } = req.query;
+  if (!section) {
+    return res.status(400).json({ error: "Section query parameter is required." });
+  }
+  
+  const sectionNumber = parseInt(section, 10);
+  if (isNaN(sectionNumber)) {
+    return res.status(400).json({ error: "Invalid section number provided." });
+  }
+  
+  const sql = `SELECT userid, username, firstname, lastname, companyName, platoon, section, bed, identifier, role 
+               FROM soldiers 
+               WHERE section = ?`;
+  db.query(sql, [sectionNumber], (err, results) => {
+    if (err) {
+      console.error("Error fetching users by section:", err);
+      return res.status(500).json({ error: "Server error" });
+    }
+    res.json(results);
+  });
+});
+
+
 
 
 //
@@ -455,52 +503,7 @@ app.put('/updateMember', (req, res) => {
 
 
 
-app.get('/getUsersByPlatoon', (req, res) => {
-  const { platoon } = req.query;
-  if (!platoon) {
-    return res.status(400).json({ error: "Platoon query parameter is required." });
-  }
-  
-  const platoonNumber = parseInt(platoon, 10);
-  if (isNaN(platoonNumber)) {
-    return res.status(400).json({ error: "Invalid platoon number provided." });
-  }
-  
-  const sql = `SELECT userid, username, firstname, lastname, companyName, platoon, section, bed, identifier, role 
-               FROM soldiers 
-               WHERE platoon = ?`;
-  db.query(sql, [platoonNumber], (err, results) => {
-    if (err) {
-      console.error("Error fetching users by platoon:", err);
-      return res.status(500).json({ error: "Server error" });
-    }
-    res.json(results);
-  });
-});
 
-
-app.get('/getUsersBySection', (req, res) => {
-  const { section } = req.query;
-  if (!section) {
-    return res.status(400).json({ error: "Section query parameter is required." });
-  }
-  
-  const sectionNumber = parseInt(section, 10);
-  if (isNaN(sectionNumber)) {
-    return res.status(400).json({ error: "Invalid section number provided." });
-  }
-  
-  const sql = `SELECT userid, username, firstname, lastname, companyName, platoon, section, bed, identifier, role 
-               FROM soldiers 
-               WHERE section = ?`;
-  db.query(sql, [sectionNumber], (err, results) => {
-    if (err) {
-      console.error("Error fetching users by section:", err);
-      return res.status(500).json({ error: "Server error" });
-    }
-    res.json(results);
-  });
-});
 
 
 
