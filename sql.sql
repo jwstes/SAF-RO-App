@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS soldiers (
                       section,
                       LPAD(bed, 2, '0'))
     ) STORED,
-    role TINYINT NOT NULL CHECK (role IN (0,1))  -- 0: recruit, 1: commander
+    role TINYINT NOT NULL CHECK (role IN (0,1,2))  -- 0: recruit, 1: sergeant, 2: commander
 );
 
 -- Create liveLocation table (store one row per soldier)

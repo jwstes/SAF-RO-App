@@ -52,28 +52,37 @@ function isCommander(req, res, next) {
 // (Note: the identifier is computed automatically.)
 //
 app.post('/register', async (req, res) => {
-  const { username, password, firstname, lastname, companyName,
-          platoon, section, bed, role } = req.body;
-  if (!username || !password || !firstname || !lastname ||
-      !companyName || !platoon || !section || !bed || role === undefined) {
-    return res.status(400).json({ error: "Missing required fields" });
-  }
+  console.log("Register Request Received");
+  // Only take fullName, email, and password from the request body.
+  const { fullName, email, password } = req.body;
+  console.log(req.body);
+
   try {
     const hashedPassword = await bcrypt.hash(password, 10);
+    // Map values to your DB columns.
+    const username = email;           // username is set as email
+    const firstname = fullName;       // store the full name in firstname (lastname left blank)
+    const lastname = '';
+    const companyName = 'NA';         // default value
+    const platoon = 0;                // default value
+    const section = 0;                // default value
+    const bed = 0;                    // default value
+    const role = 0;                   // default value
+
     const sql = `INSERT INTO soldiers
          (username, password, firstname, lastname, companyName, platoon, section, bed, role)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
-    const values = [username, hashedPassword, firstname, lastname, companyName,
-                    platoon, section, bed, role];
+    const values = [username, hashedPassword, firstname, lastname, companyName, platoon, section, bed, role];
+
     db.query(sql, values, (err, result) => {
       if (err) {
-        console.error(err);
+        console.error("DB Error:", err);
         return res.status(500).json({ error: "Error registering user" });
       }
       res.json({ message: "User registered successfully" });
     });
   } catch (err) {
-    console.error(err);
+    console.error("Server error:", err);
     res.status(500).json({ error: "Server error" });
   }
 });
@@ -112,6 +121,7 @@ app.post('/login', (req, res) => {
       tokenPayload.companyName = user.companyName;
       tokenPayload.platoon = user.platoon;
     }
+
     const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: '1h' });
     res.json({ token });
   });
@@ -182,6 +192,7 @@ app.get('/getUserByUsername', (req, res) => {
     if(results.length === 0) {
       return res.status(404).json({ error: "User not found" });
     }
+    console.log(results[0])
     res.json(results[0]);
   });
 });
@@ -258,6 +269,33 @@ app.get('/retrieveMessage', (req, res) => {
     });
   });
 });
+
+app.get('/getChatMessages', (req, res) => {
+  const { userid, recipientid } = req.query;
+  if (!userid || !recipientid) {
+    return res.status(400).json({ error: "Both userid and recipientid are required." });
+  }
+  
+  // Query to retrieve messages in both directions.
+  const sql = `
+    SELECT * FROM messages 
+    WHERE (userid = ? AND recipientid = ?)
+       OR (userid = ? AND recipientid = ?)
+    ORDER BY timestamp ASC
+  `;
+  const values = [userid, recipientid, recipientid, userid];
+  
+  db.query(sql, values, (err, results) => {
+    if (err) {
+      console.error("Error retrieving chat messages:", err);
+      return res.status(500).json({ error: "Server error" });
+    }
+    res.json(results);
+  });
+});
+
+
+
 
 //
 // Endpoints accessible only to commanders (they require a valid token and role === 1)
@@ -351,6 +389,116 @@ app.get('/viewLocationByUsername', authenticateToken, isCommander, (req, res) =>
       }
       res.json(locations[0]);
     });
+  });
+});
+
+
+
+
+/*
+  Endpoint: PUT /updateMember
+  This endpoint expects a JSON body like:
+  {
+    "username": "user@example.com",
+    "fullName": "John Doe",
+    "role": "Recruit",             // OR "Platoon Sergeant" or "Platoon Commander"
+    "platoon": "Platoon 1",        // Example string; we extract the number (1)
+    "section": "Section 2"         // Example string; we extract the number (2)
+  }
+  It updates the soldier’s record based on the username.
+*/
+app.put('/updateMember', (req, res) => {
+  const { username, fullName, role, platoon, section, bed, letter } = req.body;
+  if (!username || !fullName || !role || !platoon || !section || !bed || !letter) {
+    return res.status(400).json({ error: "All fields (username, fullName, role, platoon, section, bed, letter) are required." });
+  }
+  
+  // Map textual role to a numeric value as your table expects:
+  // "Recruit"             -> 0
+  // "Platoon Commander"   -> 2
+  // "Platoon Sergeant"    -> 1
+  let roleNum;
+  if (role === "Recruit") {
+    roleNum = 0;
+  } else if (role === "Platoon Commander") {
+    roleNum = 2;
+  } else if (role === "Platoon Sergeant") {
+    roleNum = 1;
+  } else {
+    return res.status(400).json({ error: "Invalid role provided" });
+  }
+
+  // Extract the numeric part from strings such as "Platoon 1" and "Section 2"
+  const platoonNumber = parseInt(platoon.replace(/[^0-9]/g, ''), 10);
+  const sectionNumber = parseInt(section.replace(/[^0-9]/g, ''), 10);
+  const bedNumber = parseInt(bed, 10);
+  if (isNaN(platoonNumber) || isNaN(sectionNumber) || isNaN(bedNumber)) {
+    return res.status(400).json({ error: "Invalid platoon, section, or bed format" });
+  }
+  
+  // Update the soldier’s record.
+  // Here, we update firstname (fullName), role, platoon, section, bed and companyName (set to the selected letter).
+  const sql = "UPDATE soldiers SET firstname = ?, role = ?, platoon = ?, section = ?, bed = ?, companyName = ? WHERE username = ?";
+  const values = [fullName, roleNum, platoonNumber, sectionNumber, bedNumber, letter, username];
+  
+  db.query(sql, values, (err, result) => {
+    if (err) {
+      console.error("DB Error:", err);
+      return res.status(500).json({ error: "Error updating user" });
+    }
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    res.json({ message: "User updated successfully" });
+  });
+});
+
+
+
+app.get('/getUsersByPlatoon', (req, res) => {
+  const { platoon } = req.query;
+  if (!platoon) {
+    return res.status(400).json({ error: "Platoon query parameter is required." });
+  }
+  
+  const platoonNumber = parseInt(platoon, 10);
+  if (isNaN(platoonNumber)) {
+    return res.status(400).json({ error: "Invalid platoon number provided." });
+  }
+  
+  const sql = `SELECT userid, username, firstname, lastname, companyName, platoon, section, bed, identifier, role 
+               FROM soldiers 
+               WHERE platoon = ?`;
+  db.query(sql, [platoonNumber], (err, results) => {
+    if (err) {
+      console.error("Error fetching users by platoon:", err);
+      return res.status(500).json({ error: "Server error" });
+    }
+    res.json(results);
+  });
+});
+
+
+app.get('/getUsersBySection', (req, res) => {
+  const { section } = req.query;
+  if (!section) {
+    return res.status(400).json({ error: "Section query parameter is required." });
+  }
+  
+  const sectionNumber = parseInt(section, 10);
+  if (isNaN(sectionNumber)) {
+    return res.status(400).json({ error: "Invalid section number provided." });
+  }
+  
+  const sql = `SELECT userid, username, firstname, lastname, companyName, platoon, section, bed, identifier, role 
+               FROM soldiers 
+               WHERE section = ?`;
+  db.query(sql, [sectionNumber], (err, results) => {
+    if (err) {
+      console.error("Error fetching users by section:", err);
+      return res.status(500).json({ error: "Server error" });
+    }
+    res.json(results);
   });
 });
 

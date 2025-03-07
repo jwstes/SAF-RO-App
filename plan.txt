@@ -1,0 +1,51 @@
+In the singapore military, during BMT, there is Commanders and Recruits. I have developed an application that all of them would use in order for Commanders to pass down routine orders to the recruits to assist in their training. The commanders are able to make posts which are routine orders which the recruits could view. The recruits are able to communicate with one another by messaging and lastly, the commanders are able to view the live location of the recruits.
+
+For now, the app is done. However I want two things: a SQL code and a Express.JS project.
+
+SQL Code:
+The sql code will create the following tables in the schema `safroapp`:
+
+`soldiers` table which consits of userid, username, firstname, lastname, companyName, platoon, section, bed, identifier, role
+-companyName is a string 
+-platoon is a int from 1 - 5
+-section is a int from 1 - 4
+-bed is an int from 1 - 12
+-identifier is <first word of companyName><platoon><section><bed> e.g J3408
+-role will be 0 for recruit and 1 for commander
+
+`liveLocation` table which consists of userid, lat, long
+
+`friendsList` table which consists of userid, friendid
+
+`messages` table which consists of userid, recipientid, messagebody, timestamp
+-timestamp is to be in Unix format.
+
+
+Express.JS webapp:
+This is my database config:
+{
+host: "127.0.0.1",
+user: "root",
+port: 3306,
+password: "123456",
+database: "safroapp"
+}
+
+Make me the whole project which consists of the following endpoints 
+
+[accessible to everyone]
+/register - use bcrypt
+/login
+/updateRealTimeLocation - takes in userid, lat, long and adds to database if no rows exist. if exists, updates it.
+/searchByUsername - takes in username and returns the all rows
+/getUserByUsername - takes in username and returns the whole row
+/addFriend - adds to database 
+/sendMessage - adds to databse
+/retrieveMessage - takes in recepient username and returns all rows
+
+[accessible to only commanders]
+/broadcastMessage - adds to database. Basically the commander messages all the recruits in the same company and platoon as him
+/viewLocationByUsername - takes in username of a recruit and returns the lat long of the recruit.
+
+
+You're free to add any other endpoints and/or tables or adjust table columns etc as you see fit as long as it fits the Singapore BMT narrative.
