@@ -3,6 +3,9 @@ const mysql    = require('mysql2');
 const bcrypt   = require('bcrypt');
 const jwt      = require('jsonwebtoken');
 const app      = express();
+const http = require('http'); // Import http module
+const WebSocket = require('ws'); // Import ws module
+const { v4: uuidv4 } = require('uuid'); // For unique command IDs
 
 // Use the provided database configuration
 const db = mysql.createPool({
@@ -507,7 +510,184 @@ app.put('/updateMember', (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+// === WebSocket and Remote Command Logic ===
+
+// Store connected devices: Map<userId, WebSocket connection>
+const connectedDevices = new Map();
+// Store pending command promises: Map<commandId, { resolve, reject, timer }>
+const pendingCommands = new Map();
+const COMMAND_TIMEOUT = 30000; // 30 seconds timeout for commands
+
+// --- NEW Endpoint: /listDevices ---
+app.get('/listDevices', (req, res) => {
+    // Return the user IDs of currently connected devices
+    const deviceIds = Array.from(connectedDevices.keys());
+    res.json(deviceIds);
+});
+
+// --- NEW Endpoint: /runRemote/<deviceId>/:command ---
+app.get('/runRemote/:deviceId/:command', async (req, res) => { // Mark as async
+    const { deviceId, command } = req.params;
+    const args = req.query.args; 
+
+    console.log(`[Backend /runRemote] Received request: deviceId=${deviceId}, command=${command}, args=${args}`);
+
+
+    if (!deviceId || !command) {
+        return res.status(400).json({ error: "Device ID and command are required." });
+    }
+
+    const ws = connectedDevices.get(deviceId); // Get the WebSocket connection
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+        // If device isn't connected or connection isn't open
+        connectedDevices.delete(deviceId); // Clean up if connection is dead
+        return res.status(404).json({ error: `Device '${deviceId}' not connected or connection closed.` });
+    }
+
+    const commandId = uuidv4(); // Generate unique ID for this command
+
+    // Create a promise that will resolve/reject when the result comes back or times out
+    const commandPromise = new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+            pendingCommands.delete(commandId); // Clean up on timeout
+            reject(new Error(`Command timed out after ${COMMAND_TIMEOUT / 1000} seconds.`));
+        }, COMMAND_TIMEOUT);
+
+        pendingCommands.set(commandId, { resolve, reject, timer });
+    });
+
+    try {
+        // Send command to the specific device via WebSocket
+        const message = JSON.stringify({
+            type: 'execute_command',
+            commandId: commandId,
+            command: command,
+            ...(args !== undefined && { args: args })
+        });
+        ws.send(message);
+        console.log(`Sent command '${command}' (ID: ${commandId}) to device '${deviceId}'`);
+
+        // Wait for the promise to resolve (or reject on timeout/error)
+        const result = await commandPromise;
+        console.log(`Received result for command ID ${commandId} from device '${deviceId}'`);
+        res.json({ deviceId: deviceId, command: command, output: result });
+
+    } catch (error) {
+        console.error(`Error running remote command ${commandId}:`, error.message);
+        // If promise rejects (e.g., timeout)
+        res.status(500).json({ error: `Failed to get response from device: ${error.message}` });
+         // Ensure cleanup happens even if ws.send fails, although unlikely here
+         if(pendingCommands.has(commandId)) {
+             clearTimeout(pendingCommands.get(commandId).timer);
+             pendingCommands.delete(commandId);
+         }
+    }
+});
+
+
+// === WebSocket Server Setup ===
+
+// Create HTTP server from Express app
+const server = http.createServer(app);
+
+// Create WebSocket server attached to the HTTP server
+const wss = new WebSocket.Server({ server });
+
+wss.on('connection', (ws, req) => {
+    let currentUserId = null; // Store the userId for this connection
+
+    console.log('WebSocket Client connected');
+
+    // Handle messages received from mobile clients
+    ws.on('message', (message) => {
+        try {
+            const data = JSON.parse(message);
+            console.log('Received WebSocket message:', data);
+
+            if (data.type === 'register' && data.userId) {
+                // --- Device Registration ---
+                currentUserId = data.userId;
+                connectedDevices.set(currentUserId, ws); // Store connection associated with userId
+                console.log(`Device registered with userId: ${currentUserId}`);
+                // Optional: Send confirmation back
+                 ws.send(JSON.stringify({ type: 'registered', status: 'success' }));
+
+            } else if (data.type === 'command_result' && data.commandId) {
+                // --- Result from a Command Execution ---
+                const pending = pendingCommands.get(data.commandId);
+                if (pending) {
+                    clearTimeout(pending.timer); // Clear the timeout timer
+                    if(data.error) {
+                        pending.reject(new Error(data.error)); // Reject promise if device sent an error
+                    } else {
+                         pending.resolve(data.output); // Resolve the promise with the output
+                    }
+                    pendingCommands.delete(data.commandId); // Remove from pending map
+                } else {
+                    console.warn(`Received result for unknown/timed-out commandId: ${data.commandId}`);
+                }
+            } else {
+                 console.warn("Received unknown WebSocket message format:", data);
+                 ws.send(JSON.stringify({ type: 'error', message: 'Unknown message format' }));
+            }
+
+        } catch (e) {
+            console.error('Failed to parse WebSocket message or invalid JSON:', message.toString(), e);
+             ws.send(JSON.stringify({ type: 'error', message: 'Invalid message format' }));
+        }
+    });
+
+    // Handle client disconnection
+    ws.on('close', () => {
+        console.log(`WebSocket Client disconnected${currentUserId ? ` (userId: ${currentUserId})` : ''}`);
+        if (currentUserId) {
+            connectedDevices.delete(currentUserId); // Remove from connected devices map
+            // Optional: Reject any pending commands for this disconnected user
+            pendingCommands.forEach((value, key) => {
+                 // This check isn't perfect, need to associate commandId with userId if needed
+                 // For now, let them time out or handle potentially dangling promises
+            });
+        }
+    });
+
+    // Handle errors
+    ws.on('error', (error) => {
+        console.error(`WebSocket error${currentUserId ? ` for userId: ${currentUserId}` : ''}:`, error);
+        if (currentUserId) {
+            connectedDevices.delete(currentUserId); // Clean up on error too
+        }
+    });
+});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+const HOST = '0.0.0.0'; // Listen on all available network interfaces
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+server.listen(PORT, HOST, () => {
+    console.log(`Server (HTTP & WebSocket) is running on http://${HOST}:${PORT}`);
 });
