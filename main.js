@@ -56,8 +56,7 @@ function isCommander(req, res, next) {
 //
 app.post('/register', async (req, res) => {
   console.log("Register Request Received");
-  // Only take fullName, email, and password from the request body.
-  const { fullName, email, password } = req.body;
+  const { fullName, email, password, phonenumber } = req.body;
   console.log(req.body);
 
   try {
@@ -73,9 +72,9 @@ app.post('/register', async (req, res) => {
     const role = 0;                   // default value
 
     const sql = `INSERT INTO soldiers
-         (username, password, firstname, lastname, companyName, platoon, section, bed, role)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
-    const values = [username, hashedPassword, firstname, lastname, companyName, platoon, section, bed, role];
+         (username, password, firstname, lastname, companyName, platoon, section, bed, role, phonenumber)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    const values = [username, hashedPassword, firstname, lastname, companyName, platoon, section, bed, role, phonenumber];
 
     db.query(sql, values, (err, result) => {
       if (err) {
@@ -507,7 +506,37 @@ app.put('/updateMember', (req, res) => {
 
 
 
+app.get('/findFriendByPhoneNumber', (req, res) => {
+  const { phonenumber } = req.query;
+  console.log(`[Backend /findFriendByPhoneNumber] Received request for number: ${phonenumber}`);
 
+  if (!phonenumber) {
+      return res.status(400).json({ error: "Phone number query parameter is required." });
+  }
+
+  // Query the database for a user with the exact phone number
+  // Select only the necessary, non-sensitive information
+  const sql = `SELECT userid, username, firstname, lastname, identifier
+               FROM soldiers
+               WHERE phonenumber = ?`;
+
+  db.query(sql, [phonenumber], (err, results) => {
+      if (err) {
+          console.error("[Backend /findFriendByPhoneNumber] DB Error:", err);
+          return res.status(500).json({ error: "Server error while searching for friend." });
+      }
+
+      if (results.length === 0) {
+          console.log(`[Backend /findFriendByPhoneNumber] No user found for number: ${phonenumber}`);
+          // Return 404 Not Found is appropriate here
+          return res.status(404).json({ message: "No user found with that phone number." });
+      }
+
+      // Return the found user(s) - usually expect only one if numbers are unique
+      console.log(`[Backend /findFriendByPhoneNumber] Found user(s):`, results);
+      res.json(results); // Send the array of results (even if just one)
+  });
+});
 
 
 
