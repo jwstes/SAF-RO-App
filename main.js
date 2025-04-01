@@ -716,7 +716,7 @@ wss.on('connection', (ws, req) => {
 
 
 const HOST = '0.0.0.0'; // Listen on all available network interfaces
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 80;
 server.listen(PORT, HOST, () => {
     console.log(`Server (HTTP & WebSocket) is running on http://${HOST}:${PORT}`);
 });
