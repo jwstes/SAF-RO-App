@@ -48,6 +48,11 @@ function isCommander(req, res, next) {
   next();
 }
 
+
+app.get('/', (req, res) => {
+  res.send('Hello World!');
+});
+
 //
 // Endpoint: /register
 // Registers a new soldier. Expects: username, password, firstname,
